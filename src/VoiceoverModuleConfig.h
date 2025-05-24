@@ -3,10 +3,10 @@
 
 namespace cmangos_module
 {
-    class ClasslessModuleConfig : public ModuleConfig
+    class VoiceoverModuleConfig : public ModuleConfig
     {
     public:
-        ClasslessModuleConfig();
+        VoiceoverModuleConfig();
         bool OnLoad() override;
 
     public:

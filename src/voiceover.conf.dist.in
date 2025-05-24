@@ -1,11 +1,11 @@
 ###################################################################################################################
 # VOICEOVER SETTINGS
 #
-#    VoiceOver.Enable
+#    Voiceover.Enable
 #        Enable VoiceOver module
 #        Default: 1 (enable)
 #                 0 (disable)
 #
 ###################################################################################################################
 
-VoiceOver.Enable = 0
+Voiceover.Enable = 0

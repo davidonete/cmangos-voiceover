@@ -34,6 +34,10 @@ namespace cmangos_module
         void OnPreLoadFromDB(Player* player) override;
         void OnLogOut(Player* player) override;
 
+        // Player Gossip Hooks
+        void OnGossipQuestDetails(Player* player, const Quest* quest, const ObjectGuid& questGiverGuid);
+        void OnGossipQuestReward(Player* player, const Quest* quest, const ObjectGuid& questGiverGuid);
+
         std::vector<ModuleChatCommand>* GetCommandTable() override;
         const char* GetChatCommandPrefix() const override { return "voiceover"; }
         bool HandleEnableAddon(WorldSession* session, const std::string& args);

@@ -1,4 +1,4 @@
-#include "Voiceover.h"
+#include "VoiceoverModule.h"
 
 #include "Entities/Player.h"
 #include "World/World.h"
@@ -9,7 +9,7 @@
 
 namespace cmangos_module
 {
-    VoiceOverPlayerMgr::VoiceOverPlayerMgr(Player* inPlayer, Voiceover* inModule)
+    VoiceoverPlayerMgr::VoiceoverPlayerMgr(Player* inPlayer, VoiceoverModule* inModule)
     : player(inPlayer)
     , module(inModule)
     , addonEnabled(false)
@@ -17,36 +17,18 @@ namespace cmangos_module
         
     }
 
-    Voiceover::Voiceover()
-    : Module("VoiceOver", new VoiceoverConfig())
+    VoiceoverModule::VoiceoverModule()
+    : Module("Voiceover", new VoiceoverModuleConfig())
     {
 
     }
 
-    const VoiceoverConfig* Voiceover::GetConfig() const
+    const VoiceoverModuleConfig* VoiceoverModule::GetConfig() const
     {
-        return (VoiceoverConfig*)Module::GetConfig();
+        return (VoiceoverModuleConfig*)Module::GetConfig();
     }
 
-    void Voiceover::OnCharacterCreated(Player* player)
-    {
-        if (GetConfig()->enabled)
-        {
-            if (player)
-            {
-#ifdef ENABLE_PLAYERBOTS
-                // Don't allow bot characters
-                if (!player->isRealPlayer())
-                    return;
-#endif
-                // Create the player manager
-                const uint32 playerId = player->GetObjectGuid().GetCounter();
-                playerMgrs.insert(std::make_pair(playerId, VoiceOverPlayerMgr(player, this)));
-            }
-        }
-    }
-
-    void Voiceover::OnPreLoadFromDB(Player* player)
+    void VoiceoverModule::OnCharacterCreated(Player* player)
     {
         if (GetConfig()->enabled)
         {
@@ -59,12 +41,30 @@ namespace cmangos_module
 #endif
                 // Create the player manager
                 const uint32 playerId = player->GetObjectGuid().GetCounter();
-                playerMgrs.insert(std::make_pair(playerId, VoiceOverPlayerMgr(player, this)));
+                playerMgrs.insert(std::make_pair(playerId, VoiceoverPlayerMgr(player, this)));
             }
         }
     }
 
-    void Voiceover::OnLogOut(Player* player)
+    void VoiceoverModule::OnPreLoadFromDB(Player* player)
+    {
+        if (GetConfig()->enabled)
+        {
+            if (player)
+            {
+#ifdef ENABLE_PLAYERBOTS
+                // Don't allow bot characters
+                if (!player->isRealPlayer())
+                    return;
+#endif
+                // Create the player manager
+                const uint32 playerId = player->GetObjectGuid().GetCounter();
+                playerMgrs.insert(std::make_pair(playerId, VoiceoverPlayerMgr(player, this)));
+            }
+        }
+    }
+
+    void VoiceoverModule::OnLogOut(Player* player)
     {
         if (GetConfig()->enabled)
         {
@@ -77,7 +77,41 @@ namespace cmangos_module
         }
     }
 
-    void Voiceover::SendAddonMessage(const Player* player, const char* message) const
+    void VoiceoverModule::OnGossipQuestDetails(Player* player, const Quest* quest, const ObjectGuid& questGiverGuid)
+    {
+        if (GetConfig()->enabled && player && quest)
+        {
+#ifdef ENABLE_PLAYERBOTS
+            // Don't allow bot characters
+            if (!player->isRealPlayer())
+                return false;
+#endif
+
+            if (IsAddonEnabled(player))
+            {
+                PSendAddonMessage(player, "Quest#%u;%u", quest->GetQuestId(), 1);
+            }
+        }
+    }
+
+    void VoiceoverModule::OnGossipQuestReward(Player* player, const Quest* quest, const ObjectGuid& questGiverGuid)
+    {
+        if (GetConfig()->enabled && player && quest)
+        {
+#ifdef ENABLE_PLAYERBOTS
+            // Don't allow bot characters
+            if (!player->isRealPlayer())
+                return false;
+#endif
+
+            if (IsAddonEnabled(player))
+            {
+                PSendAddonMessage(player, "Quest#%u;%u", quest->GetQuestId(), 3);
+            }
+        }
+    }
+
+    void VoiceoverModule::SendAddonMessage(const Player* player, const char* message) const
     {
         if (IsAddonEnabled(player))
         {
@@ -103,7 +137,7 @@ namespace cmangos_module
         }
     }
 
-    void Voiceover::PSendAddonMessage(const Player* player, const char* format, ...) const
+    void VoiceoverModule::PSendAddonMessage(const Player* player, const char* format, ...) const
     {
         if (player)
         {
@@ -117,17 +151,17 @@ namespace cmangos_module
         }
     }
 
-    std::vector<ModuleChatCommand>* Voiceover::GetCommandTable()
+    std::vector<ModuleChatCommand>* VoiceoverModule::GetCommandTable()
     {
         static std::vector<ModuleChatCommand> commandTable =
         {
-            { "enableAddon", std::bind(&Voiceover::HandleEnableAddon, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER }
+            { "enableAddon", std::bind(&VoiceoverModule::HandleEnableAddon, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER }
         };
 
         return &commandTable;
     }
 
-    bool Voiceover::HandleEnableAddon(WorldSession* session, const std::string& args)
+    bool VoiceoverModule::HandleEnableAddon(WorldSession* session, const std::string& args)
     {
         if (GetConfig()->enabled && session)
         {
@@ -141,7 +175,7 @@ namespace cmangos_module
 #endif
 
                 bool addonEnabled = false;
-                if (VoiceOverPlayerMgr* playerMgr = GetVoiceOverPlayerMgr(player))
+                if (VoiceoverPlayerMgr* playerMgr = GetVoiceoverPlayerMgr(player))
                 {
                     addonEnabled = playerMgr->IsAddonEnabled();
                     if (!addonEnabled)
@@ -154,16 +188,6 @@ namespace cmangos_module
                 if (addonEnabled)
                 {
                     SendAddonMessage(player, "AddonEnabled");
-
-                    // Send the initial power values to initialize the client power bars
-                    uint32 powerValue = player->GetPower(POWER_MANA);
-                    OnSetPower(player, POWER_MANA, powerValue);
-
-                    powerValue = player->GetPower(POWER_RAGE);
-                    OnSetPower(player, POWER_RAGE, powerValue);
-
-                    powerValue = player->GetPower(POWER_ENERGY);
-                    OnSetPower(player, POWER_ENERGY, powerValue);
                 }
 
                 return true;
@@ -173,11 +197,11 @@ namespace cmangos_module
         return false;
     }
 
-    VoiceOverPlayerMgr* Voiceover::GetVoiceOverPlayerMgr(Player* player)
+    VoiceoverPlayerMgr* VoiceoverModule::GetVoiceoverPlayerMgr(Player* player)
     {
         if (GetConfig()->enabled)
         {
-            VoiceOverPlayerMgr* playerMgr = nullptr;
+            VoiceoverPlayerMgr* playerMgr = nullptr;
             if (player)
             {
 #ifdef ENABLE_PLAYERBOTS
@@ -201,11 +225,11 @@ namespace cmangos_module
         return nullptr;
     }
 
-    const VoiceOverPlayerMgr* Voiceover::GetVoiceOverPlayerMgr(const Player* player) const
+    const VoiceoverPlayerMgr* VoiceoverModule::GetVoiceoverPlayerMgr(const Player* player) const
     {
         if (GetConfig()->enabled)
         {
-            const VoiceOverPlayerMgr* playerMgr = nullptr;
+            const VoiceoverPlayerMgr* playerMgr = nullptr;
             if (player)
             {
 #ifdef ENABLE_PLAYERBOTS
@@ -229,11 +253,11 @@ namespace cmangos_module
         return nullptr;
     }
 
-    bool Voiceover::IsAddonEnabled(const Player* player) const
+    bool VoiceoverModule::IsAddonEnabled(const Player* player) const
     {
         if (player)
         {
-            if (const VoiceOverPlayerMgr* playerMgr = GetVoiceOverPlayerMgr(player))
+            if (const VoiceoverPlayerMgr* playerMgr = GetVoiceoverPlayerMgr(player))
             {
                 return playerMgr->IsAddonEnabled();
             }

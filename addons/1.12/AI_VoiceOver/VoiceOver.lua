@@ -48,10 +48,17 @@ local defaults = {
     }
 }
 
+Addon.serverMessagePrefix = "voiceover"
+Addon.initialized = false
+
 local lastGossipOptions
 local selectedGossipOption
 local currentQuestSoundData
 local currentGossipSoundData
+
+function Addon:SendServerMessage(msg)
+	SendChatMessage("." .. self.serverMessagePrefix .. " " .. msg)
+end
 
 function Addon:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("VoiceOverDB", defaults)
@@ -71,14 +78,16 @@ function Addon:OnInitialize()
     Options:Initialize()
 
     self:RegisterEvent("ADDON_LOADED")
+    self:RegisterEvent("CHAT_MSG_ADDON")
+    --[[
     self:RegisterEvent("QUEST_DETAIL")
-    -- self:RegisterEvent("QUEST_PROGRESS")
+    self:RegisterEvent("QUEST_PROGRESS")
     self:RegisterEvent("QUEST_COMPLETE")
     self:RegisterEvent("QUEST_GREETING")
     self:RegisterEvent("QUEST_FINISHED")
     self:RegisterEvent("GOSSIP_SHOW")
     self:RegisterEvent("GOSSIP_CLOSED")
-	self:RegisterEvent("CHAT_MSG_ADDON")
+    ]]
 
     if select(5, GetAddOnInfo("VoiceOver")) ~= "MISSING" then
         DisableAddOn("VoiceOver")
@@ -140,6 +149,7 @@ function Addon:OnInitialize()
             end
         end
     end
+
     if C_QuestLog and C_QuestLog.AbandonQuest then
         hooksecurefunc(C_QuestLog, "AbandonQuest", MakeAbandonQuestHook("questID", function() return C_QuestLog.GetAbandonQuest() end))
     elseif AbandonQuest then
@@ -178,12 +188,85 @@ function Addon:RefreshConfig()
     SoundQueueUI:RefreshConfig()
 end
 
+function Addon:Explode(str, delimiter)
+    local result = {}
+    local from = 1
+    local delimFrom, delimTo = string.find(str, delimiter, from, 1, true)
+    while delimFrom do
+        table.insert(result, string.sub(str, from, delimFrom - 1))
+        from = delimTo + 1
+        delimFrom, delimTo = string.find(str, delimiter, from, true)
+    end
+    table.insert(result, string.sub(str, from))
+    return result
+end
+
+function Addon:SendInitializeRequest()
+	if Addon.initialized == false then
+		Addon:SendServerMessage("enableAddon")
+        Addon.initialized = true
+	end
+end
+
+function Addon:HandleQuestGossip(questID, status)
+    DEFAULT_CHAT_FRAME:AddMessage("HandleQuestGossip questID: " .. questID .. " status: " .. status)
+	local questTitle = GetTitleText()
+	local questText = GetQuestText()
+	local guid = Utils:GetNPCGUID()
+	local targetName = Utils:GetNPCName()
+
+	local questEvent = Enums.SoundEvent.QuestGreeting
+	if status == "1" then
+		questEvent = Enums.SoundEvent.QuestAccept
+	elseif status == "3" then
+		questEvent = Enums.SoundEvent.QuestComplete
+	end
+			
+	local soundData = 
+	{
+		event = questEvent,
+		questID = questID,
+		name = targetName,
+		title = questTitle,
+		text = questText,
+		unitGUID = guid,
+		unitIsObjectOrItem = Utils:IsNPCObjectOrItem(),
+		addedCallback = QuestSoundDataAdded,
+	}
+
+    for key, value in pairs(soundData) do
+        DEFAULT_CHAT_FRAME:AddMessage(tostring(key) .." = " .. tostring(value))
+    end
+
+	SoundQueue:AddSoundToQueue(soundData)
+end
+
+function Addon:HandleServerMessage(msg)
+    --DEFAULT_CHAT_FRAME:AddMessage("HandleServerMessage " .. msg)
+	local args = self:Explode(msg, "#")
+	if string.find(msg, "AddonEnabled", 1, true) then
+		--self:HandleInitialize()
+	elseif string.find(msg, "Quest", 1, true) then
+		-- Quest#questID;status
+		args = self:Explode(args[2], ";")
+		self:HandleQuestGossip(args[1], args[2])
+	end
+end
+
+function Addon:CHAT_MSG_ADDON()
+	if string.find(arg1, self.serverMessagePrefix, 1, true) then
+        self:HandleServerMessage(arg2)
+	end
+end
+
 function Addon:ADDON_LOADED(event, addon)
     addon = addon or arg1 -- Thanks, Ace3v...
     local hook = self.OnAddonLoad[addon]
     if hook then
         hook()
     end
+
+    self.SendInitializeRequest()
 end
 
 local function GossipSoundDataAdded(soundData)
@@ -200,9 +283,9 @@ local function QuestSoundDataAdded(soundData)
     currentQuestSoundData = soundData
 end
 
+--[[
 local GetTitleText = GetTitleText -- Store original function before EQL3 (Extended Quest Log 3) overrides it and starts prepending quest level
 function Addon:QUEST_DETAIL()
-	DEFAULT_CHAT_FRAME:AddMessage("QUEST_DETAIL")
     local questID = GetQuestID()
     local questTitle = GetTitleText()
     local questText = GetQuestText()
@@ -287,6 +370,7 @@ function Addon:QUEST_COMPLETE()
     }
     --SoundQueue:AddSoundToQueue(soundData)
 end
+]]
 
 function Addon:ShouldPlayGossip(guid, text)
     local npcKey = guid or "unknown"
@@ -309,143 +393,4 @@ function Addon:ShouldPlayGossip(guid, text)
     end
 
     return true, npcKey
-end
-
-function Addon:QUEST_GREETING()
-    local guid = Utils:GetNPCGUID()
-    local targetName = Utils:GetNPCName()
-    local greetingText = GetGreetingText()
-
-    -- Can happen if the player interacted with an NPC while having main menu or options opened
-    if not guid and not targetName then
-        return
-    end
-
-    local play, npcKey = self:ShouldPlayGossip(guid, greetingText)
-    if not play then
-        return
-    end
-
-    -- Play the gossip sound
-    ---@type SoundData
-    local soundData = {
-        event = Enums.SoundEvent.QuestGreeting,
-        name = targetName,
-        text = greetingText,
-        unitGUID = guid,
-        unitIsObjectOrItem = Utils:IsNPCObjectOrItem(),
-        addedCallback = GossipSoundDataAdded,
-        startCallback = function()
-            self.db.char.hasSeenGossipForNPC[npcKey] = true
-        end
-    }
-    SoundQueue:AddSoundToQueue(soundData)
-end
-
-function Addon:GOSSIP_SHOW()
-    local guid = Utils:GetNPCGUID()
-    local targetName = Utils:GetNPCName()
-    local gossipText = GetGossipText()
-
-    -- Can happen if the player interacted with an NPC while having main menu or options opened
-    if not guid and not targetName then
-        return
-    end
-
-    local play, npcKey = self:ShouldPlayGossip(guid, gossipText)
-    if not play then
-        return
-    end
-
-    -- Play the gossip sound
-    ---@type SoundData
-    local soundData = {
-        event = Enums.SoundEvent.Gossip,
-        name = targetName,
-        title = selectedGossipOption and format([["%s"]], selectedGossipOption),
-        text = gossipText,
-        unitGUID = guid,
-        unitIsObjectOrItem = Utils:IsNPCObjectOrItem(),
-        addedCallback = GossipSoundDataAdded,
-        startCallback = function()
-            self.db.char.hasSeenGossipForNPC[npcKey] = true
-        end
-    }
-    SoundQueue:AddSoundToQueue(soundData)
-
-    selectedGossipOption = nil
-    lastGossipOptions = nil
-    if C_GossipInfo and C_GossipInfo.GetOptions then
-        lastGossipOptions = C_GossipInfo.GetOptions()
-    elseif GetGossipOptions then
-        lastGossipOptions = { GetGossipOptions() }
-    end
-end
-
-function Addon:QUEST_FINISHED()
-    if Addon.db.profile.Audio.StopAudioOnDisengage and currentQuestSoundData then
-        SoundQueue:RemoveSoundFromQueue(currentQuestSoundData)
-    end
-    currentQuestSoundData = nil
-end
-
-function Addon:GOSSIP_CLOSED()
-    if Addon.db.profile.Audio.StopAudioOnDisengage and currentGossipSoundData then
-        SoundQueue:RemoveSoundFromQueue(currentGossipSoundData)
-    end
-    currentGossipSoundData = nil
-
-    selectedGossipOption = nil
-end
-
-function Addon:Explode(str, delimiter)
-    local result = {}
-    local from = 1
-    local delimFrom, delimTo = string.find(str, delimiter, from, 1, true)
-    while delimFrom do
-        table.insert(result, string.sub(str, from, delimFrom - 1))
-        from = delimTo + 1
-        delimFrom, delimTo = string.find(str, delimiter, from, true)
-    end
-    table.insert(result, string.sub(str, from))
-    return result
-end
-
-function Addon:CHAT_MSG_ADDON()
-	if string.find(arg1, "VoiceOver", 1, true) then
-		--DEFAULT_CHAT_FRAME:AddMessage(arg2)
-		--questID:number;status:0-1
-		local args = self:Explode(arg2, ";")
-		local questArgs = self:Explode(args[1], ":")
-		local questStatus = self:Explode(args[2], ":")
-		
-		local questID = questArgs[2]
-		local questTitle = GetTitleText()
-		local questText = GetQuestText()
-		local guid = Utils:GetNPCGUID()
-		local targetName = Utils:GetNPCName()
-		local questEvent = Enums.SoundEvent.QuestAccept
-		
-		if questStatus[2] == "0" then
-			questEvent = Enums.SoundEvent.QuestAccept
-		elseif questStatus[2] == "1" then
-			questEvent = Enums.SoundEvent.QuestComplete
-		else
-			DEFAULT_CHAT_FRAME:AddMessage("what " .. tostring(questStatus[2]))
-		end
-			
-		local soundData = 
-		{
-			event = questEvent,
-			questID = questID,
-			name = targetName,
-			title = questTitle,
-			text = questText,
-			unitGUID = guid,
-			unitIsObjectOrItem = Utils:IsNPCObjectOrItem(),
-			addedCallback = QuestSoundDataAdded,
-		}
-
-		SoundQueue:AddSoundToQueue(soundData)
-	end
 end

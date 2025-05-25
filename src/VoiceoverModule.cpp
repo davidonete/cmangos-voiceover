@@ -153,11 +153,20 @@ namespace cmangos_module
 
             const int localeIndex = player->GetSession()->GetSessionDbLocaleIndex();
             result.questTitle = GetQuestTitleByLocale(quest, localeIndex);
+
             if (localeIndex >= 0)
             {
                 const char* questGiverName = nullptr;
                 sObjectMgr.GetCreatureLocaleStrings(result.questgiverID, localeIndex, &questGiverName);
                 result.questGiverName = questGiverName ? questGiverName : "";
+            }
+
+            if (result.questGiverName.empty())
+            {
+                if (const CreatureInfo* creatureInfo = sObjectMgr.GetCreatureTemplate(result.questgiverID))
+                {
+                    result.questGiverName = creatureInfo->Name;
+                }
             }
 
             std::ostringstream guidStr;

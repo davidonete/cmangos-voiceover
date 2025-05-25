@@ -424,9 +424,27 @@ end
 ---@type table<SoundEvent, fun(soundData: SoundData): string|nil>
 local getFileNameForEvent =
 {
-    [Enums.SoundEvent.QuestAccept]   = function(soundData) return format("%d-%s-%d", soundData.questID, "accept", soundData.unitID) end,
-    [Enums.SoundEvent.QuestProgress] = function(soundData) return format("%d-%s-%d", soundData.questID, "progress", soundData.unitID) end,
-    [Enums.SoundEvent.QuestComplete] = function(soundData) return format("%d-%s-%d", soundData.questID, "complete", soundData.unitID) end,
+    [Enums.SoundEvent.QuestAccept]   = function(questID, unitID) 
+		if unitID ~=nil and unitID > 0 then
+			return format("%d-%s-%d", questID, "accept", unitID)
+		else
+			return format("%d-%s", questID, "accept")
+		end
+	end,
+    [Enums.SoundEvent.QuestProgress] = function(questID, unitID) 
+		if unitID ~=nil and unitID > 0 then
+			return format("%d-%s-%d", questID, "progress", unitID)
+		else
+			return format("%d-%s", questID, "progress")
+		end
+	end,
+    [Enums.SoundEvent.QuestComplete] = function(questID, unitID) 
+		if unitID ~=nil and unitID > 0 then
+			return format("%d-%s-%d", questID, "complete", unitID)
+		else
+			return format("%d-%s", questID, "complete")
+		end
+	end,
     [Enums.SoundEvent.QuestGreeting] = function(soundData) return DataModules:GetNPCGossipTextHash(soundData) end,
     [Enums.SoundEvent.Gossip]        = function(soundData) return DataModules:GetNPCGossipTextHash(soundData) end,
 }
@@ -441,31 +459,36 @@ setmetatable(getFileNameForEvent,
 ---@param soundData SoundData
 ---@return boolean found Whether the sound is found and can be played
 function DataModules:PrepareSound(soundData)
-    soundData.fileName = getFileNameForEvent[soundData.event](soundData)
-
-    if soundData.fileName == nil then
-        return false
-    end
+    soundData.fileNames =
+	{	
+		getFileNameForEvent[soundData.event](soundData.questID, soundData.unitID),
+		getFileNameForEvent[soundData.event](soundData.questID, 0),
+	}
 
     for _, module in self:GetModules() do
-        local data = module.SoundLengthLookupByFileName
-        if data then
-            local playerGenderedFileName = DataModules:AddPlayerGenderToFilename(soundData.fileName)
-            local length = data[playerGenderedFileName]
-            if length then
-                soundData.fileName = playerGenderedFileName
-            else
-                length = data[soundData.fileName]
-            end
-            if length then
-                soundData.filePath = format([[Interface\AddOns\%s\%s]], module.METADATA.AddonName,
-                    module.GetSoundPath and module:GetSoundPath(soundData.fileName, soundData.event) or
-                    soundData.fileName)
-                soundData.length = length
-                soundData.module = module
-                return true
-            end
-        end
+		local data = module.SoundLengthLookupByFileName
+		if data then
+			for i, fileName in ipairs(soundData.fileNames) do
+				if fileName ~= nil then
+					local playerGenderedFileName = DataModules:AddPlayerGenderToFilename(fileName)
+					local length = data[playerGenderedFileName]
+					if length then
+						fileName = playerGenderedFileName
+					else
+						length = data[fileName]
+					end
+					
+					if length then
+						soundData.filePath = format([[Interface\AddOns\%s\%s]], module.METADATA.AddonName,
+							module.GetSoundPath and module:GetSoundPath(fileName, soundData.event) or
+							fileName)
+						soundData.length = length
+						soundData.module = module
+						return true
+					end
+				end
+			end
+		end
     end
 
     return false

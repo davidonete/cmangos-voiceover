@@ -298,7 +298,7 @@ function Addon:QUEST_DETAIL()
 end
 
 function Addon:QUEST_PROGRESS()
-	local questID = GetQuestID()
+	local questID = 0
 	local questTitle = GetTitleText()
 	if questID == 0 then
 		local questTitle = GetTitleText()

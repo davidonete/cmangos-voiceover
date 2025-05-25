@@ -157,9 +157,9 @@ end
 -- Patch 2.4.0 (2008-03-25): Added.
 if Version.IsAnyLegacy and not UnitGUID then
     -- 1.0.0 - 2.3.0
-    Utils.GetGUIDType = nil
-    Utils.GetIDFromGUID = nil
-    Utils.MakeGUID = function() end
+    --Utils.GetGUIDType = nil
+    --Utils.GetIDFromGUID = nil
+    --Utils.MakeGUID = function() end
 -- Patch 4.0.1 (2010-10-12): Bits shifted. NPCID is now characters 5-8, not 7-10 (counting from 1).
 elseif Version:IsBelowLegacyVersion(40000) then
     -- 2.4.0 - 3.3.5

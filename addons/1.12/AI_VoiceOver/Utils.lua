@@ -1,6 +1,19 @@
 setfenv(1, VoiceOver)
 Utils = {}
 
+function Utils:Explode(str, delimiter)
+    local result = {}
+    local from = 1
+    local delimFrom, delimTo = string.find(str, delimiter, from, 1, true)
+    while delimFrom do
+        table.insert(result, string.sub(str, from, delimFrom - 1))
+        from = delimTo + 1
+        delimFrom, delimTo = string.find(str, delimiter, from, true)
+    end
+    table.insert(result, string.sub(str, from))
+    return result
+end
+
 --- Returns `Enum.GUID` type of the provided GUID.
 --- - Removed in clients before 2.3 as those don't provide `UnitGUID(unitID)` function.
 --- - Overridden for clients before 6.0 that use an older GUID format.
@@ -18,10 +31,10 @@ end
 ---@param guid string GUID returned by the API
 ---@return number id
 function Utils:GetIDFromGUID(guid)
-    local type, rest = strsplit("-", guid, 2)
-    type = assert(Enums.GUID[type], format("Unknown GUID type %s", type))
+    local values = Utils:Explode(guid, "-")
+    local type = assert(Enums.GUID[values[1]], format("Unknown GUID type %s", values[1]))
     assert(Enums.GUID:CanHaveID(type), format([[GUID "%s" does not contain ID]], guid))
-    return assert(tonumber((select(5, strsplit("-", rest)))), format([[Failed to retrieve ID from GUID "%s"]], guid))
+    return assert(tonumber(values[6]), format([[Failed to retrieve ID from GUID "%s"]], guid))
 end
 
 --- Returns a dummy WorldObject GUID using the provided `Enums.GUID` type and ID.

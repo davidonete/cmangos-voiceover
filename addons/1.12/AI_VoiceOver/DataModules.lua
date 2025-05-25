@@ -359,43 +359,6 @@ function DataModules:GetQuestID(source, title, npcName, text)
 	local questID = 0
 	if best_result then
 		questID = best_result.value
-	-[[elseif questDB then
-		local potentialQuests = {}
-		local potentialQuestsAmount = 0
-		for potentialQuestID, potentialQuestData in pairs(questDB) do
-			if string.lower(potentialQuestData.T) == string.lower(cleanedTitle) then
-				potentialQuests[potentialQuestID] = potentialQuestData
-				potentialQuestsAmount = potentialQuestsAmount + 1
-				questID = potentialQuestID
-			end
-		end
-		
-		-- If multiple quests match try to find by description
-		if potentialQuestsAmount > 1 then
-			for potentialQuestID, potentialQuestData in pairs(potentialQuests) do
-				DEFAULT_CHAT_FRAME:AddMessage("Potential match found: ID = " .. potentialQuestID .. ", Title = " .. potentialQuestData.T)
-			end
-			
-			for potentialQuestID, potentialQuestData in pairs(potentialQuests) do
-				local potentialQuestCleanedText = replaceDoubleQuotes(getFirstNWords(potentialQuestData.D, 15)) ..
-					" " .. replaceDoubleQuotes(getLastNWords(potentialQuestData.D, 15))
-					
-				DEFAULT_CHAT_FRAME:AddMessage("Match done: 1: " .. string.lower(potentialQuestCleanedText) .. " 2: " .. string.lower(cleanedText))
-				if string.lower(potentialQuestCleanedText) == string.lower(cleanedText) then
-					questID = potentialQuestID
-					
-					--DEFAULT_CHAT_FRAME:AddMessage("Match done: 1: " .. potentialQuestCleanedText .. " 2: " .. cleanedText)
-					break
-				end
-			end
-			--
-		end--]]
-	end
-	
-	if questID > 0 then
-		DEFAULT_CHAT_FRAME:AddMessage("Match found: ID = " .. questID .. ", Title = " .. cleanedTitle)
-	else
-		DEFAULT_CHAT_FRAME:AddMessage("No match found for '"..cleanedTitle.."'")
 	end
 	
 	return questID
@@ -461,9 +424,9 @@ end
 ---@type table<SoundEvent, fun(soundData: SoundData): string|nil>
 local getFileNameForEvent =
 {
-    [Enums.SoundEvent.QuestAccept]   = function(soundData) return format("%d-%s", soundData.questID, "accept") end,
-    [Enums.SoundEvent.QuestProgress] = function(soundData) return format("%d-%s", soundData.questID, "progress") end,
-    [Enums.SoundEvent.QuestComplete] = function(soundData) return format("%d-%s", soundData.questID, "complete") end,
+    [Enums.SoundEvent.QuestAccept]   = function(soundData) return format("%d-%s-%d", soundData.questID, "accept", soundData.unitID) end,
+    [Enums.SoundEvent.QuestProgress] = function(soundData) return format("%d-%s-%d", soundData.questID, "progress", soundData.unitID) end,
+    [Enums.SoundEvent.QuestComplete] = function(soundData) return format("%d-%s-%d", soundData.questID, "complete", soundData.unitID) end,
     [Enums.SoundEvent.QuestGreeting] = function(soundData) return DataModules:GetNPCGossipTextHash(soundData) end,
     [Enums.SoundEvent.Gossip]        = function(soundData) return DataModules:GetNPCGossipTextHash(soundData) end,
 }

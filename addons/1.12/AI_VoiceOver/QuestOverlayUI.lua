@@ -66,14 +66,24 @@ function QuestOverlayUI:UpdatePlayButton(soundTitle, questID, questLogTitleFrame
 
     self.questPlayButtons[questID]:SetScript("OnClick", function(self)
         if not QuestOverlayUI.questPlayButtons[questID].soundData then
-            local type, id = DataModules:GetQuestLogQuestGiverTypeAndID(questID)
-            QuestOverlayUI.questPlayButtons[questID].soundData = {
+			local name = ""
+			local unitID = 0
+			local cachedQuestData = Addon.QuestLog[soundTitle]
+            if cachedQuestData ~= nil then
+				name = cachedQuestData.questGiverName
+                unitID = Utils:GetIDFromGUID(cachedQuestData.questgiverGUID)
+            end
+			
+			QuestOverlayUI.questPlayButtons[questID].soundData = 
+            {
                 event = Enums.SoundEvent.QuestAccept,
                 questID = questID,
-                name = id and DataModules:GetObjectName(type, id) or "Unknown Name",
+                name = name,
                 title = soundTitle,
-                unitGUID = id and Enums.GUID:CanHaveID(type) and Utils:MakeGUID(type, id) or nil
+                unitID = unitID
             }
+			
+			Addon:SendSoundEventRequest(Enums.SoundEvent.QuestAccept, questID, soundTitle)
         end
 
         local soundData = self.soundData
@@ -128,11 +138,17 @@ function QuestOverlayUI:Update()
             questIndex)
 
         if not isHeader then
+            local unitID = 0
+            if Addon.QuestLog[title] ~= nil then
+                questID = Addon.QuestLog[title].id
+                unitID = Utils:GetIDFromGUID(Addon.QuestLog[title].questgiverGUID)
+            end
+
             if not self.questPlayButtons[questID] then
                 self:CreatePlayButton(questID)
             end
 
-            if DataModules:PrepareSound({ event = Enums.SoundEvent.QuestAccept, questID = questID }) then
+            if DataModules:PrepareSound({ event = Enums.SoundEvent.QuestAccept, questID = questID, unitID = unitID }) then
                 self:UpdatePlayButton(title, questID, questLogTitleFrame, normalText, questCheck)
                 self.questPlayButtons[questID]:Enable()
             else

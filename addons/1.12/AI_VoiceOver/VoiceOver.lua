@@ -6,6 +6,8 @@ Addon = LibStub("AceAddon-3.0"):NewAddon("VoiceOver", "AceEvent-3.0", "AceTimer-
 
 Addon.OnAddonLoad = {}
 
+Addon.QuestLog = {}
+
 ---@class VoiceOverConfig
 local defaults = {
     profile = {
@@ -78,16 +80,11 @@ function Addon:OnInitialize()
     Options:Initialize()
 
     self:RegisterEvent("ADDON_LOADED")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("CHAT_MSG_ADDON")
-    --[[
-    self:RegisterEvent("QUEST_DETAIL")
-    self:RegisterEvent("QUEST_PROGRESS")
-    self:RegisterEvent("QUEST_COMPLETE")
-    self:RegisterEvent("QUEST_GREETING")
-    self:RegisterEvent("QUEST_FINISHED")
-    self:RegisterEvent("GOSSIP_SHOW")
-    self:RegisterEvent("GOSSIP_CLOSED")
-    ]]
+	self:RegisterEvent("QUEST_DETAIL")
+	self:RegisterEvent("QUEST_PROGRESS")
+	self:RegisterEvent("QUEST_COMPLETE")
 
     if select(5, GetAddOnInfo("VoiceOver")) ~= "MISSING" then
         DisableAddOn("VoiceOver")
@@ -202,71 +199,15 @@ function Addon:Explode(str, delimiter)
 end
 
 function Addon:SendInitializeRequest()
-	if Addon.initialized == false then
-		Addon:SendServerMessage("enableAddon")
-        Addon.initialized = true
-	end
+    Addon:SendServerMessage("enableAddon")
 end
 
-function Addon:HandleQuestGossip(questID, status)
-    DEFAULT_CHAT_FRAME:AddMessage("HandleQuestGossip questID: " .. questID .. " status: " .. status)
-	local questTitle = GetTitleText()
-	local questText = GetQuestText()
-	local guid = Utils:GetNPCGUID()
-	local targetName = Utils:GetNPCName()
-
-	local questEvent = Enums.SoundEvent.QuestGreeting
-	if status == "1" then
-		questEvent = Enums.SoundEvent.QuestAccept
-	elseif status == "3" then
-		questEvent = Enums.SoundEvent.QuestComplete
-	end
-			
-	local soundData = 
-	{
-		event = questEvent,
-		questID = questID,
-		name = targetName,
-		title = questTitle,
-		text = questText,
-		unitGUID = guid,
-		unitIsObjectOrItem = Utils:IsNPCObjectOrItem(),
-		addedCallback = QuestSoundDataAdded,
-	}
-
-    for key, value in pairs(soundData) do
-        DEFAULT_CHAT_FRAME:AddMessage(tostring(key) .." = " .. tostring(value))
-    end
-
-	SoundQueue:AddSoundToQueue(soundData)
+function Addon:SendQuestLogRequest()
+    Addon:SendServerMessage("questLog")
 end
 
-function Addon:HandleServerMessage(msg)
-    --DEFAULT_CHAT_FRAME:AddMessage("HandleServerMessage " .. msg)
-	local args = self:Explode(msg, "#")
-	if string.find(msg, "AddonEnabled", 1, true) then
-		--self:HandleInitialize()
-	elseif string.find(msg, "Quest", 1, true) then
-		-- Quest#questID;status
-		args = self:Explode(args[2], ";")
-		self:HandleQuestGossip(args[1], args[2])
-	end
-end
-
-function Addon:CHAT_MSG_ADDON()
-	if string.find(arg1, self.serverMessagePrefix, 1, true) then
-        self:HandleServerMessage(arg2)
-	end
-end
-
-function Addon:ADDON_LOADED(event, addon)
-    addon = addon or arg1 -- Thanks, Ace3v...
-    local hook = self.OnAddonLoad[addon]
-    if hook then
-        hook()
-    end
-
-    self.SendInitializeRequest()
+function Addon:SendSoundEventRequest(eventType, id, eventTitle)
+    Addon:SendServerMessage("soundEvent "..eventType..";"..id..";"..eventTitle)
 end
 
 local function GossipSoundDataAdded(soundData)
@@ -283,94 +224,126 @@ local function QuestSoundDataAdded(soundData)
     currentQuestSoundData = soundData
 end
 
---[[
-local GetTitleText = GetTitleText -- Store original function before EQL3 (Extended Quest Log 3) overrides it and starts prepending quest level
+function Addon:HandleInitialize()
+    if Addon.initialized == false then
+        Addon:SendQuestLogRequest()
+        Addon.initialized = true
+    end
+end
+
+-- Store original function before EQL3 (Extended Quest Log 3) overrides it and starts prepending quest level
+local GetTitleText = GetTitleText 
+function Addon:HandleSoundEvent(eventType, id, guid, eventTitle, targetName)
+    if Enums.SoundEvent:IsQuestEvent(eventType) then
+        if eventTitle == "" then
+            eventTitle = GetTitleText()
+        end
+
+        if targetName == "" then
+            targetName = Utils:GetNPCName()
+        end
+
+        local guidType = Utils:GetGUIDType(guid)
+        local unitID = Utils:GetIDFromGUID(guid)
+
+        local soundData = 
+	    {
+		    event = eventType,
+		    questID = id,
+		    name = targetName,
+		    title = eventTitle,
+            unitID = unitID,
+		    unitGUID = guid,
+		    unitIsObjectOrItem = guidType == Enums.GUID.Item or guidType == Enums.GUID.GameObject,
+		    addedCallback = QuestSoundDataAdded
+	    }
+		
+        SoundQueue:AddSoundToQueue(soundData)
+    end
+end
+
+function Addon:HandleQuestLog(status, questID, guid, questTitle, questGiverName)
+    if status == 1 then
+        Addon.QuestLog[questTitle] =
+        {
+            id = questID,
+            title = questTitle,
+            questgiverGUID = guid,
+            questGiverName = questGiverName
+        }
+    else
+        Addon.QuestLog[questTitle] = nil
+    end
+end
+
+function Addon:HandleServerMessage(msg)
+	local args = self:Explode(msg, "#")
+	if string.find(msg, "AddonEnabled", 1, true) then
+		self:HandleInitialize()
+	elseif string.find(msg, "SoundEvent", 1, true) then
+		-- SoundEvent#Enums.SoundEvent;id;guid;eventTitle;targetName
+		args = self:Explode(args[2], ";")
+		self:HandleSoundEvent(tonumber(args[1]), tonumber(args[2]), args[3], args[4], args[5])
+    elseif string.find(msg, "QuestLog", 1, true) then
+        -- QuestLog#status;questID;guid;questTitle;questGiverName
+		args = self:Explode(args[2], ";")
+        self:HandleQuestLog(tonumber(args[1]), tonumber(args[2]), args[3], args[4], args[5])
+	end
+end
+
 function Addon:QUEST_DETAIL()
-    local questID = GetQuestID()
-    local questTitle = GetTitleText()
-    local questText = GetQuestText()
-    local guid = Utils:GetNPCGUID()
-    local targetName = Utils:GetNPCName()
+	local questID = GetQuestID()
+	local questTitle = GetTitleText()
+	Addon:SendSoundEventRequest(Enums.SoundEvent.QuestAccept, questID, questTitle)
+end
 
-    if not questID or questID == 0 then
-        return
-    end
-
-    -- Can happen if the player interacted with an NPC while having main menu or options opened
-    if not guid and not targetName then
-        return
-    end
-
-    if Addon.db.char.RecentQuestTitleToID and questID ~= 0 then
-        Addon.db.char.RecentQuestTitleToID[questTitle] = questID
-    end
-
-    local type = guid and Utils:GetGUIDType(guid)
-    if type == Enums.GUID.Item then
-        -- Allow quests started from items to have VO, book icon will be displayed for them
-    elseif not type or not Enums.GUID:CanHaveID(type) then
-        -- If the quest is started by something that we cannot extract the ID of (e.g. Player, when sharing a quest) - try to fallback to a questgiver from a module's database
-        local id
-        type, id = DataModules:GetQuestLogQuestGiverTypeAndID(questID)
-        guid = id and Enums.GUID:CanHaveID(type) and Utils:MakeGUID(type, id) or guid
-        targetName = id and DataModules:GetObjectName(type, id) or targetName or "Unknown Name"
-    end
-
-    -- print("QUEST_DETAIL", questID, questTitle);
-    ---@type SoundData
-    local soundData = {
-        event = Enums.SoundEvent.QuestAccept,
-        questID = questID,
-        name = targetName,
-        title = questTitle,
-        text = questText,
-        unitGUID = guid,
-        unitIsObjectOrItem = Utils:IsNPCObjectOrItem(),
-        addedCallback = QuestSoundDataAdded,
-    }
-
-	--for k, v in pairs(soundData) do
-	--	DEFAULT_CHAT_FRAME:AddMessage(tostring(k) .. " = " .. tostring(v))
-	--end
+function Addon:QUEST_PROGRESS()
+	local questID = GetQuestID()
+	local questTitle = GetTitleText()
+	if questID == 0 then
+		local questTitle = GetTitleText()
+		local questInfo = Addon.QuestLog[questTitle];
+		if questInfo ~= nil then
+			questID = questInfo.id
+		end
+	end
 	
-    --SoundQueue:AddSoundToQueue(soundData)
+	Addon:SendSoundEventRequest(Enums.SoundEvent.QuestProgress, questID, questTitle)
 end
 
 function Addon:QUEST_COMPLETE()
-    local questID = GetQuestID()
-    local questTitle = GetTitleText()
-    local questText = GetRewardText()
-    local guid = Utils:GetNPCGUID()
-    local targetName = Utils:GetNPCName()
-
-    if not questID or questID == 0 then
-        return
-    end
-
-    -- Can happen if the player interacted with an NPC while having main menu or options opened
-    if not guid and not targetName then
-        return
-    end
-
-    if Addon.db.char.RecentQuestTitleToID and questID ~= 0 then
-        Addon.db.char.RecentQuestTitleToID[questTitle] = questID
-    end
-
-    -- print("QUEST_COMPLETE", questID, questTitle);
-    ---@type SoundData
-    local soundData = {
-        event = Enums.SoundEvent.QuestComplete,
-        questID = questID,
-        name = targetName,
-        title = questTitle,
-        text = questText,
-        unitGUID = guid,
-        unitIsObjectOrItem = Utils:IsNPCObjectOrItem(),
-        addedCallback = QuestSoundDataAdded,
-    }
-    --SoundQueue:AddSoundToQueue(soundData)
+	local questID = GetQuestID()
+	local questTitle = GetTitleText()
+	if questID == 0 then
+		local questTitle = GetTitleText()
+		local questInfo = Addon.QuestLog[questTitle];
+		if questInfo ~= nil then
+			questID = questInfo.id
+		end
+	end
+	
+	Addon:SendSoundEventRequest(Enums.SoundEvent.QuestComplete, questID, questTitle)
 end
-]]
+
+function Addon:CHAT_MSG_ADDON()
+	if string.find(arg1, self.serverMessagePrefix, 1, true) then
+        Addon:HandleServerMessage(arg2)
+	end
+end
+
+function Addon:PLAYER_ENTERING_WORLD(event, addon)
+    Addon:SendInitializeRequest()
+end
+
+function Addon:ADDON_LOADED(event, addon)
+    Addon:SendInitializeRequest()
+
+    addon = addon or arg1 -- Thanks, Ace3v...
+    local hook = self.OnAddonLoad[addon]
+    if hook then
+        hook()
+    end
+end
 
 function Addon:ShouldPlayGossip(guid, text)
     local npcKey = guid or "unknown"

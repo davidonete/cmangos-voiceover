@@ -6,6 +6,16 @@
 
 namespace cmangos_module
 {
+    enum class SoundEvent : uint8
+    {
+        QUEST_ACCEPT = 1,
+        QUEST_PROGRESS = 2,
+        QUEST_COMPLETE = 3,
+        QUEST_GREETING = 4,
+        GOSSIP = 5,
+        INVALID = 6
+    };
+
     class VoiceoverModule;
 
     class VoiceoverPlayerMgr
@@ -34,13 +44,15 @@ namespace cmangos_module
         void OnPreLoadFromDB(Player* player) override;
         void OnLogOut(Player* player) override;
 
-        // Player Gossip Hooks
-        void OnGossipQuestDetails(Player* player, const Quest* quest, const ObjectGuid& questGiverGuid);
-        void OnGossipQuestReward(Player* player, const Quest* quest, const ObjectGuid& questGiverGuid);
+        // Player Action Hooks
+        void OnAcceptQuest(Player* player, uint32 questId, const ObjectGuid* questGiver);
+        void OnAbandonQuest(Player* player, uint32 questId);
 
         std::vector<ModuleChatCommand>* GetCommandTable() override;
         const char* GetChatCommandPrefix() const override { return "voiceover"; }
         bool HandleEnableAddon(WorldSession* session, const std::string& args);
+        bool HandleQuestLogRequest(WorldSession* session, const std::string& args);
+        bool HandleSoundEventRequest(WorldSession* session, const std::string& args);
 
     private:
         VoiceoverPlayerMgr* GetVoiceoverPlayerMgr(Player* player);

@@ -399,10 +399,11 @@ namespace cmangos_module
                                 // Try to guess the id based on the event type and the current target of the player
                                 if (isQuestEvent && !eventTitle.empty())
                                 {
+                                    const int localeIndex = player->GetSession()->GetSessionDbLocaleIndex();
                                     if (PlayerMenu* playerMenu = player->GetPlayerMenu())
                                     {
                                         QuestMenu& questMenu = playerMenu->GetQuestMenu();
-                                        const int localeIndex = player->GetSession()->GetSessionDbLocaleIndex();
+                                        
                                         for (uint32 i = 0; i < questMenu.MenuItemCount(); ++i)
                                         {
                                             const QuestMenuItem& menuItem = questMenu.GetItem(i);
@@ -419,6 +420,25 @@ namespace cmangos_module
                                                         id = questID;
                                                         break;
                                                     }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (id == 0)
+                                    {
+                                        const uint32 targetEntry = targetGuid.GetEntry();
+                                        QuestRelationsMapBounds bounds = sObjectMgr.GetCreatureQuestRelationsMapBounds(targetEntry);
+                                        for (QuestRelationsMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+                                        {
+                                            const uint32 questID = itr->second;
+                                            if (const Quest* quest = sObjectMgr.GetQuestTemplate(questID))
+                                            {
+                                                const std::string questTitle = toLower(GetQuestTitleByLocale(quest, localeIndex));
+                                                if (questTitle == eventTitle)
+                                                {
+                                                    id = questID;
+                                                    break;
                                                 }
                                             }
                                         }
